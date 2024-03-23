@@ -7,11 +7,11 @@ we split up the work by the requirements. So, one person would work on FR1, whil
 would work on FR2, etc. One of us also took on the task of figuring out the setup and the connection 
 to the database, which was mostly smooth for Mac Users whereas Windows (1 person) took some more time 
 to set up. While working together, we made sure to follow the non-functional requirements such as protecting
-against malicious input and helped each out parallel programming style. Once we had laid a foundation 
+against malicious input and helped each other out parallel programming style. Once we had laid a foundation 
 for each of the requirements, we all tackled debugging together as it was a much longer process.
 
 Breakdown:
 
-Sahil - Setup (Connection, Files, etc), FR4
+Sahil - Setup (Connection, Files, etc), FR2
 Sreshta - User Interface, FR1, FR5
-Rajvir - FR2, FR3
+Rajvir - FR3, FR4
