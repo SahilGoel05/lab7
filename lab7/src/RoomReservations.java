@@ -1,25 +1,15 @@
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-
-import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.Scanner;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.ArrayList;
+import java.sql.*;
+import java.time.*;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.time.format.TextStyle;
 
 public class RoomReservations {
-    private int currCode = 7;
+    private String pw;
     public static void main(String[] args) {
         try {
             RoomReservations rr = new RoomReservations();
+            rr.getPassword();
+            rr.initializeDatabase();
             int demoNum = Integer.parseInt(args[0]);
 
             switch (demoNum) {
@@ -46,46 +36,49 @@ public class RoomReservations {
         }
     }
 
+    private void getPassword() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("\nPlease enter the password to your database: ");
+        pw = scanner.nextLine();
+        System.out.println();
+    }
+
     private void fetchRoomsAndRates() throws SQLException {
         System.out.println("Fetching Rooms and Rates...");
 
-        String roomsQuery = "SELECT roomcode, roomname, beds, bedtype, maxocc, baseprice, decor FROM lab7_rooms";
-        String availabilityQuery =
-                "SELECT room, MIN(checkin) AS nextAvailableCheckin " +
-                "FROM lab7_reservations " +
-                "WHERE checkin > CURRENT_DATE " +
-                "GROUP BY room";
+        String roomDetailsQuery = "SELECT r.roomcode, r.roomname, r.beds, r.bedtype, r.maxocc, r.baseprice, r.decor, " +
+                "(SELECT COUNT(*) FROM lab7_reservations WHERE Room = r.RoomCode AND CheckIn >= CURDATE() - INTERVAL 180 DAY) / 180.0 AS popularity_score, " +
+                "(SELECT MIN(CheckIn) FROM lab7_reservations WHERE Room = r.RoomCode AND CheckIn > CURDATE()) AS nextAvailableCheckin, " +
+                "(SELECT DATEDIFF(CheckOut, CheckIn) FROM lab7_reservations WHERE Room = r.RoomCode AND Checkout <= CURDATE() ORDER BY CheckOut DESC LIMIT 1) AS last_stay_length, " +
+                "(SELECT CheckOut FROM lab7_reservations WHERE Room = r.RoomCode AND Checkout <= CURDATE() ORDER BY CheckOut DESC LIMIT 1) AS last_stay_checkout " +
+                "FROM lab7_rooms r " +
+                "ORDER BY popularity_score DESC, r.roomcode";
 
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
                 System.getenv("HP_JDBC_USER"),
-                System.getenv("HP_JDBC_PW"))) {
-            Map<String, LocalDate> nextAvailableCheckinMap = new HashMap<>();
-            Map<String, String> roomDetailsMap = new HashMap<>();
+                pw);
+             PreparedStatement pstmt = conn.prepareStatement(roomDetailsQuery)) {
 
-            // Fetch next available check-in dates for rooms
-            try (PreparedStatement pstmt = conn.prepareStatement(availabilityQuery)) {
-                ResultSet rs = pstmt.executeQuery();
-                while (rs.next()) {
-                    nextAvailableCheckinMap.put(rs.getString("room"), rs.getDate("nextAvailableCheckin").toLocalDate());
-                }
+            System.out.format("%-10s %-30s %-5s %-10s %-7s %-10s %-15s %-20s %-16s %-20s %-20s%n", "RoomCode", "RoomName", "Beds", "BedType", "MaxOcc", "BasePrice", "Decor", "Popularity Score", "Next Check-in", "Last Stay Length", "Last Stay Checkout");
+            System.out.println(String.join("", Collections.nCopies(160, "-")));
+
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                System.out.format("%-10s %-30s %-5d %-10s %-7d $%-10.2f %-15s %-20.2f %-20s %-20d %-20s%n",
+                        rs.getString("roomcode"),
+                        rs.getString("roomname"),
+                        rs.getInt("beds"),
+                        rs.getString("bedtype"),
+                        rs.getInt("maxocc"),
+                        rs.getDouble("baseprice"),
+                        rs.getString("decor"),
+                        rs.getDouble("popularity_score"),
+                        rs.getDate("nextAvailableCheckin") != null ? rs.getDate("nextAvailableCheckin").toString() : "N/A",
+                        rs.wasNull() ? 0 : rs.getInt("last_stay_length"),
+                        rs.getDate("last_stay_checkout") != null ? rs.getDate("last_stay_checkout").toString() : "N/A");
             }
-
-            // Fetch room details
-            try (PreparedStatement pstmt = conn.prepareStatement(roomsQuery)) {
-                ResultSet rs = pstmt.executeQuery();
-                while (rs.next()) {
-                    String roomCode = rs.getString("roomcode");
-                    String roomDetails = String.format("%s, %s, %d, %s, %d, %.2f, %s, Next available check-in: %s",
-                            rs.getString("roomname"), roomCode, rs.getInt("beds"),
-                            rs.getString("bedtype"), rs.getInt("maxocc"),
-                            rs.getDouble("baseprice"), rs.getString("decor"),
-                            nextAvailableCheckinMap.getOrDefault(roomCode, LocalDate.now()));
-                    roomDetailsMap.put(roomCode, roomDetails);
-                }
-
-                // Display room details
-                roomDetailsMap.values().forEach(System.out::println);
-            }
+        } catch (SQLException e) {
+            System.err.println("SQL Exception: " + e.getMessage());
         }
     }
 
@@ -94,7 +87,7 @@ public class RoomReservations {
 
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
                 System.getenv("HP_JDBC_USER"),
-                System.getenv("HP_JDBC_PW"))) {
+                pw)) {
             Scanner scanner = new Scanner(System.in);
 
             System.out.print("\nFirst name: ");
@@ -104,7 +97,10 @@ public class RoomReservations {
             String lastName = scanner.nextLine();
 
             System.out.print("Room code (or 'Any' for no preference): ");
-            String roomCode = scanner.nextLine();
+            String desiredRoomCode = scanner.nextLine().toUpperCase();
+
+            System.out.print("Desired bed type (or 'Any' for no preference): ");
+            String desiredBedType = scanner.nextLine();
 
             System.out.print("Check-in date (YYYY-MM-DD): ");
             LocalDate checkInDate = LocalDate.parse(scanner.nextLine());
@@ -118,65 +114,191 @@ public class RoomReservations {
             System.out.print("Number of adults: ");
             int adultCount = Integer.parseInt(scanner.nextLine());
 
-            // Check for date conflicts
-            String dateConflictQuery = "SELECT 1 FROM lab7_reservations WHERE room = ? AND (checkin <= ?) AND (checkout >= ?)";
-            try (PreparedStatement pstmt = conn.prepareStatement(dateConflictQuery)) {
-                pstmt.setString(1, roomCode);
+            List<Map<String, Object>> availableRooms = new ArrayList<>();
+
+            String findAvailableRoomsQuery =
+                    "SELECT RoomCode, roomname, bedType, basePrice, maxOcc FROM lab7_rooms r " +
+                            "WHERE NOT EXISTS (" +
+                            "  SELECT 1 FROM lab7_reservations res " +
+                            "  WHERE res.Room = r.RoomCode AND " +
+                            "  res.checkout > ? AND res.checkin < ? " +
+                            ") " +
+                            "AND (? = 'Any' OR bedType = ?) " +
+                            "AND (? = 'Any' OR RoomCode = ?) " +
+                            "AND maxOcc >= ?";
+
+
+            try (PreparedStatement pstmt = conn.prepareStatement(findAvailableRoomsQuery)) {
+                pstmt.setDate(1, java.sql.Date.valueOf(checkInDate));
                 pstmt.setDate(2, java.sql.Date.valueOf(checkOutDate));
-                pstmt.setDate(3, java.sql.Date.valueOf(checkInDate));
+                pstmt.setString(3, desiredBedType);
+                pstmt.setString(4, desiredBedType);
+                pstmt.setString(5, desiredRoomCode);
+                pstmt.setString(6, desiredRoomCode);
+                pstmt.setInt(7, adultCount + childrenCount);
+
+                ResultSet rs = pstmt.executeQuery();
+
+                int index = 1;
+                while (rs.next()) {
+                    if (index == 1) {
+                        System.out.println("\nRoom Options: ");
+                        System.out.printf("%-3s %-10s %-30s %-10s %-15s %-15s %-15s %n",
+                                "#", "Room Code", "Room Name", "Bed Type",
+                                "Base Price", "Max Occupancy", "Availability Dates");
+                    }
+                    Map<String, Object> roomDetails = new HashMap<>();
+                    roomDetails.put("RoomCode", rs.getString("RoomCode"));
+                    roomDetails.put("RoomName", rs.getString("roomname"));
+                    roomDetails.put("BedType", rs.getString("bedType"));
+                    roomDetails.put("BasePrice", rs.getFloat("basePrice"));
+                    roomDetails.put("MaxOcc", rs.getInt("maxOcc"));
+
+                    availableRooms.add(roomDetails);
+
+                    System.out.printf("%-3d %-10s %-30s %-10s $%-14.2f %-15d %s to %s %n",
+                            index++,
+                            rs.getString("RoomCode"),
+                            rs.getString("roomname"),
+                            rs.getString("bedType"),
+                            rs.getFloat("basePrice"),
+                            rs.getInt("maxOcc"),
+                            checkInDate,
+                            checkOutDate);
+                }
+            }
+
+            if (availableRooms.isEmpty()) {
+                String findSimilarRoomsQuery =
+                        "SELECT r.RoomCode, r.roomname, r.bedType, r.basePrice, r.maxOcc, " +
+                                "IFNULL((SELECT MIN(res.Checkin) FROM lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkin > ?), 'No upcoming reservations') AS NextAvailableFrom, " +
+                                "IFNULL((SELECT MAX(res.Checkout) FROM lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkout < ?), 'No previous reservations') AS LastAvailableUntil " +
+                                "FROM lab7_rooms r " +
+                                "WHERE r.maxOcc >= ? AND NOT EXISTS ( " +
+                                "SELECT 1 FROM lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkout > ? AND res.Checkin < ? " +
+                                ") " +
+                                "GROUP BY r.RoomCode, r.roomname, r.bedType, r.basePrice, r.maxOcc " +
+                                "ORDER BY NextAvailableFrom, LastAvailableUntil " +
+                                "LIMIT 5";
+
+                int index = 1;
+                try (PreparedStatement pstmt = conn.prepareStatement(findSimilarRoomsQuery)) {
+                    pstmt.setDate(1, java.sql.Date.valueOf(checkOutDate));
+                    pstmt.setDate(2, java.sql.Date.valueOf(checkInDate));
+                    pstmt.setInt(3, adultCount + childrenCount);
+                    pstmt.setDate(4, java.sql.Date.valueOf(checkInDate));
+                    pstmt.setDate(5, java.sql.Date.valueOf(checkOutDate));
+                    ResultSet rs = pstmt.executeQuery();
+
+
+                    while (rs.next()) {
+                        if (index == 1) {
+                            System.out.println("\nNo exact matches found. Here are some similar rooms:");
+                            System.out.printf("%-3s %-10s %-30s %-10s %-15s %-15s %-15s %n",
+                                    "#", "Room Code", "Room Name", "Bed Type",
+                                    "Base Price", "Max Occupancy", "Availability Dates");
+                        }
+
+                        Map<String, Object> roomDetails = new HashMap<>();
+                        roomDetails.put("RoomCode", rs.getString("RoomCode"));
+                        roomDetails.put("RoomName", rs.getString("roomname"));
+                        roomDetails.put("BedType", rs.getString("bedType"));
+                        roomDetails.put("BasePrice", rs.getFloat("basePrice"));
+                        roomDetails.put("MaxOcc", rs.getInt("maxOcc"));
+
+                        availableRooms.add(roomDetails);
+
+                        System.out.printf("%-3d %-10s %-30s %-10s $%-14.2f %-15d %s to %s %n",
+                                index++,
+                                rs.getString("RoomCode"),
+                                rs.getString("roomname"),
+                                rs.getString("bedType"),
+                                rs.getFloat("basePrice"),
+                                rs.getInt("maxOcc"),
+                                checkInDate,
+                                checkOutDate);
+                    }
+                }
+            }
+
+            if(availableRooms.isEmpty()) {
+                System.out.println("No matching/similar rooms available matching the criteria.");
+                return;
+            }
+
+            System.out.print("Please enter the number of the room you wish to book, or '0' to cancel: ");
+            int roomSelection = Integer.parseInt(scanner.nextLine());
+            if (roomSelection == 0) {
+                System.out.println("Reservation cancelled.");
+                return;
+            }
+
+            if (roomSelection < 1 || roomSelection > availableRooms.size()) {
+                System.out.println("Invalid selection. Please try again.");
+                return;
+            }
+
+            Map<String, Object> selectedRoom = availableRooms.get(roomSelection - 1);
+            String actualRoomCode = (String) selectedRoom.get("RoomCode");
+            float basePrice = (Float) selectedRoom.get("BasePrice");
+
+            String getMaxCodeSql = "SELECT MAX(CODE) AS maxCode FROM lab7_reservations";
+            int maxCode = 0;
+
+            try (PreparedStatement pstmt = conn.prepareStatement(getMaxCodeSql)) {
                 ResultSet rs = pstmt.executeQuery();
                 if (rs.next()) {
-                    System.out.println("Date conflict detected. Reservation cannot be made.");
-                    return;
+                    maxCode = rs.getInt("maxCode") + 1;
                 }
             }
 
-            // Validate room occupancy
-            String roomQuery = "SELECT roomname, bedtype, maxocc, baseprice FROM lab7_rooms WHERE RoomCode = ?";
-            float basePrice;
-            String roomName, bedType;
-            try (PreparedStatement pstmt = conn.prepareStatement(roomQuery)) {
-                pstmt.setString(1, roomCode);
-                ResultSet rs = pstmt.executeQuery();
-                if (!rs.next()) {
-                    System.out.println("Room does not exist.");
-                    return;
-                }
-                int maxOcc = rs.getInt("maxocc");
-                if (adultCount + childrenCount > maxOcc) {
-                    System.out.println("Occupancy limit exceeded. Reservation cannot be made.");
-                    return;
-                }
-                basePrice = rs.getFloat("baseprice");
-                roomName = rs.getString("roomname");
-                bedType = rs.getString("bedtype");
-            }
-
-            // Insert new reservation
-            String insertSql = "INSERT INTO lab7_reservations (Room, Checkin, Checkout, Rate, LastName, FirstName, Adults, Kids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            String insertSql = "INSERT INTO lab7_reservations (CODE, Room, Checkin, Checkout, Rate, LastName, FirstName, Adults, Kids) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             conn.setAutoCommit(false);
-            try (PreparedStatement pstmt = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
-                pstmt.setString(1, roomCode);
-                pstmt.setDate(2, java.sql.Date.valueOf(checkInDate));
-                pstmt.setDate(3, java.sql.Date.valueOf(checkOutDate));
-                pstmt.setFloat(4, basePrice); // Consider dynamic pricing here
-                pstmt.setString(5, lastName);
-                pstmt.setString(6, firstName);
-                pstmt.setInt(7, adultCount);
-                pstmt.setInt(8, childrenCount);
-                int affectedRows = pstmt.executeUpdate();
-                if (affectedRows == 0) {
-                    throw new SQLException("Creating reservation failed, no rows affected.");
-                }
-                System.out.println("Reservation successfully created.");
+
+            try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                pstmt.setInt(1, maxCode);
+                pstmt.setString(2, actualRoomCode);
+                pstmt.setDate(3, java.sql.Date.valueOf(checkInDate));
+                pstmt.setDate(4, java.sql.Date.valueOf(checkOutDate));
+                pstmt.setFloat(5, basePrice);
+                pstmt.setString(6, lastName);
+                pstmt.setString(7, firstName);
+                pstmt.setInt(8, adultCount);
+                pstmt.setInt(9, childrenCount);
+                pstmt.executeUpdate();
                 conn.commit();
             } catch (SQLException e) {
                 conn.rollback();
-                throw e;
+                System.out.println("An error occurred during the reservation process: " + e.getMessage());
             }
-        } catch (Exception e) {
-            System.out.println("An error occurred: " + e.getMessage());
-            // Additional error handling as needed
+
+            System.out.println("\nThank you, your reservation is confirmed!");
+            System.out.println("Reservation Details:");
+            System.out.println("First Name: " + firstName);
+            System.out.println("Last Name: " + lastName);
+            System.out.println("Room Code: " + actualRoomCode);
+            System.out.println("Room Name: " + selectedRoom.get("RoomName"));
+            System.out.println("Bed Type: " + selectedRoom.get("BedType"));
+            System.out.println("Begin Date: " + checkInDate);
+            System.out.println("End Date: " + checkOutDate);
+            System.out.println("Adults: " + adultCount);
+            System.out.println("Children: " + childrenCount);
+
+            long weekdays = 0;
+            long weekendDays = 0;
+
+            for (LocalDate date = checkInDate; date.isBefore(checkOutDate); date = date.plusDays(1)) {
+                DayOfWeek day = date.getDayOfWeek();
+                if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+                    weekendDays++;
+                } else {
+                    weekdays++;
+                }
+            }
+
+            double totalCost = weekdays * basePrice + weekendDays * basePrice * 1.1;
+            System.out.printf("Total Cost: $%.2f\n", totalCost);
         }
     }
 
@@ -184,7 +306,7 @@ public class RoomReservations {
         System.out.println("Reservation Cancellation:");
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
                 System.getenv("HP_JDBC_USER"),
-                System.getenv("HP_JDBC_PW"))) {
+                pw)) {
             Scanner scanner = new Scanner(System.in);
             System.out.print("Enter the reservation code to cancel: ");
 
@@ -196,7 +318,6 @@ public class RoomReservations {
                 return;
             }
 
-            // Check if the reservation exists
             String checkExistenceQuery = "SELECT COUNT(*) AS count FROM lab7_reservations WHERE code = ?";
             try (PreparedStatement pstmt = conn.prepareStatement(checkExistenceQuery)) {
                 pstmt.setInt(1, reservationCode);
@@ -207,7 +328,6 @@ public class RoomReservations {
                 }
             }
 
-            // Confirm cancellation
             System.out.print("Confirm cancellation (y/n): ");
             String confirmation = scanner.nextLine();
             if (!confirmation.equalsIgnoreCase("y")) {
@@ -215,8 +335,8 @@ public class RoomReservations {
                 return;
             }
 
-            // Perform cancellation
             String deleteQuery = "DELETE FROM lab7_reservations WHERE code = ?";
+            conn.setAutoCommit(false);
             try (PreparedStatement pstmt = conn.prepareStatement(deleteQuery)) {
                 pstmt.setInt(1, reservationCode);
                 int affectedRows = pstmt.executeUpdate();
@@ -239,7 +359,7 @@ public class RoomReservations {
     private void searchReservations() throws SQLException {
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
                 System.getenv("HP_JDBC_USER"),
-                System.getenv("HP_JDBC_PW"))) {
+                pw)) {
             Scanner scanner = new Scanner(System.in);
 
             System.out.println("Search Reservations");
@@ -249,10 +369,10 @@ public class RoomReservations {
             System.out.print("Enter last name (partial allowed, leave empty for any): ");
             String lastName = scanner.nextLine();
 
-            System.out.print("Enter room code (leave empty for any): ");
+            System.out.print("Enter room code (partial allowed, leave empty for any): ");
             String roomCode = scanner.nextLine();
 
-            System.out.print("Enter reservation code (leave empty for any): ");
+            System.out.print("Enter reservation code (partial allowed, leave empty for any): ");
             String reservationCode = scanner.nextLine();
 
             System.out.print("Enter check-in date range start (YYYY-MM-DD, leave empty for any): ");
@@ -261,11 +381,11 @@ public class RoomReservations {
             System.out.print("Enter check-in date range end (YYYY-MM-DD, leave empty for any): ");
             String endDate = scanner.nextLine();
 
-            String query = "SELECT * FROM lab7_reservations WHERE " +
+            String query = "SELECT CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids FROM lab7_reservations WHERE " +
                     "FirstName LIKE ? AND " +
                     "LastName LIKE ? " +
-                    (roomCode.isEmpty() ? "" : "AND Room = ? ") +
-                    (reservationCode.isEmpty() ? "" : "AND CODE = ? ") +
+                    (roomCode.isEmpty() ? "" : "AND Room LIKE ? ") +
+                    (reservationCode.isEmpty() ? "" : "AND CODE LIKE ? ") +
                     (startDate.isEmpty() ? "" : "AND CheckIn >= ? ") +
                     (endDate.isEmpty() ? "" : "AND CheckIn <= ? ");
 
@@ -289,11 +409,23 @@ public class RoomReservations {
 
                 ResultSet rs = pstmt.executeQuery();
 
+                // Update the header format to include all columns
+                System.out.format("%-10s %-10s %-15s %-15s %-12s %-12s %-10s %-10s %-10s%n",
+                        "Code", "Room", "First Name", "Last Name", "Check-In", "Check-Out", "Rate", "Adults", "Kids");
+                System.out.println(String.join("", Collections.nCopies(100, "-")));
+
+                // Update while loop to print out all columns
                 while (rs.next()) {
-                    // Assuming you want to print some details here
-                    System.out.format("Reservation Code: %s, Room: %s, Name: %s %s, Check-In: %s, Check-Out: %s\n",
-                            rs.getString("CODE"), rs.getString("Room"), rs.getString("FirstName"), rs.getString("LastName"),
-                            rs.getDate("CheckIn").toString(), rs.getDate("CheckOut").toString());
+                    System.out.format("%-10s %-10s %-15s %-15s %-12s %-12s %-10.2f %-10d %-10d%n",
+                            rs.getString("CODE"),
+                            rs.getString("Room"),
+                            rs.getString("FirstName"),
+                            rs.getString("LastName"),
+                            rs.getDate("CheckIn").toString(),
+                            rs.getDate("CheckOut").toString(),
+                            rs.getFloat("Rate"),
+                            rs.getInt("Adults"),
+                            rs.getInt("Kids"));
                 }
             }
         } catch (SQLException e) {
@@ -301,13 +433,11 @@ public class RoomReservations {
         }
     }
 
-
-
     private void generateRevenueSummary() throws SQLException {
         System.out.println("Revenue Summary:");
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
                 System.getenv("HP_JDBC_USER"),
-                System.getenv("HP_JDBC_PW"))) {
+                pw)) {
             Map<String, Double[]> roomRevenues = new HashMap<>();
 
             String query = "SELECT room, MONTH(checkout) AS month, " +
@@ -320,36 +450,113 @@ public class RoomReservations {
                 ResultSet rs = stmt.executeQuery(query);
                 while (rs.next()) {
                     String room = rs.getString("room");
-                    int monthIndex = rs.getInt("month") - 1; // Array index adjustment
+                    int monthIndex = rs.getInt("month") - 1;
                     double revenue = rs.getDouble("revenue");
 
-                    roomRevenues.computeIfAbsent(room, k -> new Double[13]);
+                    roomRevenues.computeIfAbsent(room, k -> new Double[12]);
                     Double[] revenues = roomRevenues.get(room);
 
                     revenues[monthIndex] = (revenues[monthIndex] == null ? 0 : revenues[monthIndex]) + revenue;
-                    revenues[12] = (revenues[12] == null ? 0 : revenues[12]) + revenue; // Total revenue
                 }
             }
 
-            Double[] totalRevenues = new Double[13];
+            System.out.format("%-10s", "Room");
+            for (int i = 1; i <= 12; i++) {
+                System.out.format("%-12s", Month.of(i).getDisplayName(TextStyle.SHORT, Locale.ENGLISH));
+            }
+            System.out.format("%-12s%n", "Total");
+
+            System.out.println(String.join("", Collections.nCopies(154, "-")));
+
+            Double[] totalRevenues = new Double[12];
             Arrays.fill(totalRevenues, 0.0);
 
             roomRevenues.forEach((room, revenues) -> {
-                System.out.format("%s", room);
+                double roomTotal = 0;
+                System.out.format("%-10s", room);
                 for (int i = 0; i < revenues.length; i++) {
-                    System.out.format(" $%.2f", revenues[i] == null ? 0 : revenues[i]);
-                    totalRevenues[i] += (revenues[i] == null ? 0 : revenues[i]);
+                    double monthRevenue = (revenues[i] == null) ? 0 : revenues[i];
+                    System.out.format("%-12.2f", monthRevenue);
+                    roomTotal += monthRevenue;
+                    totalRevenues[i] += monthRevenue;
                 }
-                System.out.println();
+                System.out.format("%-12.2f%n", roomTotal);
             });
 
-            System.out.print("Totals");
+            System.out.format("%-10s", "Total");
+            double grandTotal = 0;
             for (double total : totalRevenues) {
-                System.out.format(" $%.2f", total);
+                System.out.format("%-12.2f", total);
+                grandTotal += total;
             }
-            System.out.println();
+            System.out.format("%-12.2f%n", grandTotal);
         } catch (SQLException e) {
             System.err.println("SQL Exception: " + e.getMessage());
+        }
+    }
+
+
+    private void initializeDatabase() throws SQLException {
+        String createRoomsTableSql =
+                "CREATE TABLE IF NOT EXISTS lab7_rooms (" +
+                        "RoomCode char(5) PRIMARY KEY," +
+                        "RoomName varchar(30) NOT NULL," +
+                        "Beds int NOT NULL," +
+                        "bedType varchar(8) NOT NULL," +
+                        "maxOcc int NOT NULL," +
+                        "basePrice DECIMAL(6,2) NOT NULL," +
+                        "decor varchar(20) NOT NULL," +
+                        "UNIQUE (RoomName)" +
+                        ");";
+
+        String createReservationsTableSql =
+                "CREATE TABLE IF NOT EXISTS lab7_reservations (" +
+                        "CODE int PRIMARY KEY," +
+                        "Room char(5) NOT NULL," +
+                        "CheckIn date NOT NULL," +
+                        "Checkout date NOT NULL," +
+                        "Rate DECIMAL(6,2) NOT NULL," +
+                        "LastName varchar(15) NOT NULL," +
+                        "FirstName varchar(15) NOT NULL," +
+                        "Adults int NOT NULL," +
+                        "Kids int NOT NULL," +
+                        "FOREIGN KEY (Room) REFERENCES lab7_rooms (RoomCode)" +
+                        ");";
+
+        String[] checkDataSql = {
+                "SELECT EXISTS (SELECT 1 FROM lab7_rooms)",
+                "SELECT EXISTS (SELECT 1 FROM lab7_reservations)"
+        };
+
+        String[] initialDataSql = {
+                "INSERT INTO lab7_rooms SELECT * FROM INN.rooms;",
+                "INSERT INTO lab7_reservations SELECT CODE, Room, DATE_ADD(CheckIn, INTERVAL 162 MONTH), DATE_ADD(Checkout, INTERVAL 162 MONTH), Rate, LastName, FirstName, Adults, Kids FROM INN.reservations;"
+        };
+
+        try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
+                System.getenv("HP_JDBC_USER"),
+                pw)) {
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute(createRoomsTableSql);
+                stmt.execute(createReservationsTableSql);
+            }
+
+            for (int i = 0; i < checkDataSql.length; i++) {
+                try (Statement stmt = conn.createStatement()) {
+                    ResultSet rs = stmt.executeQuery(checkDataSql[i]);
+                    if (rs.next()) {
+                        boolean exists = rs.getInt(1) > 0;
+                        if (!exists) {
+                            stmt.execute(initialDataSql[i]);
+                        }
+                    }
+                } catch (SQLException e) {
+                    System.out.println("Error checking data or inserting initial data: " + e.getMessage());
+                }
+            }
+        } catch (SQLException e) {
+            throw e;
         }
     }
 
