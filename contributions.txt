@@ -5,11 +5,12 @@ Our Approach:
 We all just met up and worked on the lab together. During these meetings, we split up the work by
 the requirements. So, one person would work on FR1, while another person would work on FR2, etc. 
 One of us also took on the task of figuring out the setup and the connection to the database.
-Once we kind of had the basic code for each of the requirement, we all tackled debugging together
-as it was a longer process.
+While working together, we made sure to follow the non-functional requirements such as protecting
+against malicious input. Once we kind of had the basic code for each of the requirement, we all 
+tackled debugging together as it was a longer process.
 
 Breakdown:
 
-Sahil - Setup, FR4
-Sreshta - FR1, FR5
+Sahil - Setup (Connection, Files, etc), FR4
+Sreshta - User Interface, FR1, FR5
 Rajvir - FR2, FR3
