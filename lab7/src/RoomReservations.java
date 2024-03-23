@@ -409,12 +409,10 @@ public class RoomReservations {
 
                 ResultSet rs = pstmt.executeQuery();
 
-                // Update the header format to include all columns
                 System.out.format("%-10s %-10s %-15s %-15s %-12s %-12s %-10s %-10s %-10s%n",
                         "Code", "Room", "First Name", "Last Name", "Check-In", "Check-Out", "Rate", "Adults", "Kids");
                 System.out.println(String.join("", Collections.nCopies(100, "-")));
 
-                // Update while loop to print out all columns
                 while (rs.next()) {
                     System.out.format("%-10s %-10s %-15s %-15s %-12s %-12s %-10.2f %-10d %-10d%n",
                             rs.getString("CODE"),
@@ -494,8 +492,7 @@ public class RoomReservations {
             System.err.println("SQL Exception: " + e.getMessage());
         }
     }
-
-
+    
     private void initializeDatabase() throws SQLException {
         String createRoomsTableSql =
                 "CREATE TABLE IF NOT EXISTS lab7_rooms (" +
