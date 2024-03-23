@@ -47,11 +47,11 @@ public class RoomReservations {
         System.out.println("Fetching Rooms and Rates...");
 
         String roomDetailsQuery = "SELECT r.roomcode, r.roomname, r.beds, r.bedtype, r.maxocc, r.baseprice, r.decor, " +
-                "(SELECT COUNT(*) FROM lab7_reservations WHERE Room = r.RoomCode AND CheckIn >= CURDATE() - INTERVAL 180 DAY) / 180.0 AS popularity_score, " +
-                "(SELECT MIN(CheckIn) FROM lab7_reservations WHERE Room = r.RoomCode AND CheckIn > CURDATE()) AS nextAvailableCheckin, " +
-                "(SELECT DATEDIFF(CheckOut, CheckIn) FROM lab7_reservations WHERE Room = r.RoomCode AND Checkout <= CURDATE() ORDER BY CheckOut DESC LIMIT 1) AS last_stay_length, " +
-                "(SELECT CheckOut FROM lab7_reservations WHERE Room = r.RoomCode AND Checkout <= CURDATE() ORDER BY CheckOut DESC LIMIT 1) AS last_stay_checkout " +
-                "FROM lab7_rooms r " +
+                "(SELECT COUNT(*) FROM sgoel05.lab7_reservations WHERE Room = r.RoomCode AND CheckIn >= CURDATE() - INTERVAL 180 DAY) / 180.0 AS popularity_score, " +
+                "(SELECT MIN(CheckIn) FROM sgoel05.lab7_reservations WHERE Room = r.RoomCode AND CheckIn > CURDATE()) AS nextAvailableCheckin, " +
+                "(SELECT DATEDIFF(CheckOut, CheckIn) FROM sgoel05.lab7_reservations WHERE Room = r.RoomCode AND Checkout <= CURDATE() ORDER BY CheckOut DESC LIMIT 1) AS last_stay_length, " +
+                "(SELECT CheckOut FROM sgoel05.lab7_reservations WHERE Room = r.RoomCode AND Checkout <= CURDATE() ORDER BY CheckOut DESC LIMIT 1) AS last_stay_checkout " +
+                "FROM sgoel05.lab7_rooms r " +
                 "ORDER BY popularity_score DESC, r.roomcode";
 
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
@@ -117,9 +117,9 @@ public class RoomReservations {
             List<Map<String, Object>> availableRooms = new ArrayList<>();
 
             String findAvailableRoomsQuery =
-                    "SELECT RoomCode, roomname, bedType, basePrice, maxOcc FROM lab7_rooms r " +
+                    "SELECT RoomCode, roomname, bedType, basePrice, maxOcc FROM sgoel05.lab7_rooms r " +
                             "WHERE NOT EXISTS (" +
-                            "  SELECT 1 FROM lab7_reservations res " +
+                            "  SELECT 1 FROM sgoel05.lab7_reservations res " +
                             "  WHERE res.Room = r.RoomCode AND " +
                             "  res.checkout > ? AND res.checkin < ? " +
                             ") " +
@@ -171,11 +171,11 @@ public class RoomReservations {
             if (availableRooms.isEmpty()) {
                 String findSimilarRoomsQuery =
                         "SELECT r.RoomCode, r.roomname, r.bedType, r.basePrice, r.maxOcc, " +
-                                "IFNULL((SELECT MIN(res.Checkin) FROM lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkin > ?), 'No upcoming reservations') AS NextAvailableFrom, " +
-                                "IFNULL((SELECT MAX(res.Checkout) FROM lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkout < ?), 'No previous reservations') AS LastAvailableUntil " +
-                                "FROM lab7_rooms r " +
+                                "IFNULL((SELECT MIN(res.Checkin) FROM sgoel05.lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkin > ?), 'No upcoming reservations') AS NextAvailableFrom, " +
+                                "IFNULL((SELECT MAX(res.Checkout) FROM sgoel05.lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkout < ?), 'No previous reservations') AS LastAvailableUntil " +
+                                "FROM sgoel05.lab7_rooms r " +
                                 "WHERE r.maxOcc >= ? AND NOT EXISTS ( " +
-                                "SELECT 1 FROM lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkout > ? AND res.Checkin < ? " +
+                                "SELECT 1 FROM sgoel05.lab7_reservations res WHERE res.Room = r.RoomCode AND res.Checkout > ? AND res.Checkin < ? " +
                                 ") " +
                                 "GROUP BY r.RoomCode, r.roomname, r.bedType, r.basePrice, r.maxOcc " +
                                 "ORDER BY NextAvailableFrom, LastAvailableUntil " +
@@ -242,7 +242,7 @@ public class RoomReservations {
             String actualRoomCode = (String) selectedRoom.get("RoomCode");
             float basePrice = (Float) selectedRoom.get("BasePrice");
 
-            String getMaxCodeSql = "SELECT MAX(CODE) AS maxCode FROM lab7_reservations";
+            String getMaxCodeSql = "SELECT MAX(CODE) AS maxCode FROM sgoel05.lab7_reservations";
             int maxCode = 0;
 
             try (PreparedStatement pstmt = conn.prepareStatement(getMaxCodeSql)) {
@@ -252,7 +252,7 @@ public class RoomReservations {
                 }
             }
 
-            String insertSql = "INSERT INTO lab7_reservations (CODE, Room, Checkin, Checkout, Rate, LastName, FirstName, Adults, Kids) " +
+            String insertSql = "INSERT INTO sgoel05.lab7_reservations (CODE, Room, Checkin, Checkout, Rate, LastName, FirstName, Adults, Kids) " +
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             conn.setAutoCommit(false);
 
@@ -318,7 +318,7 @@ public class RoomReservations {
                 return;
             }
 
-            String checkExistenceQuery = "SELECT COUNT(*) AS count FROM lab7_reservations WHERE code = ?";
+            String checkExistenceQuery = "SELECT COUNT(*) AS count FROM sgoel05.lab7_reservations WHERE code = ?";
             try (PreparedStatement pstmt = conn.prepareStatement(checkExistenceQuery)) {
                 pstmt.setInt(1, reservationCode);
                 ResultSet rs = pstmt.executeQuery();
@@ -335,7 +335,7 @@ public class RoomReservations {
                 return;
             }
 
-            String deleteQuery = "DELETE FROM lab7_reservations WHERE code = ?";
+            String deleteQuery = "DELETE FROM sgoel05.lab7_reservations WHERE code = ?";
             conn.setAutoCommit(false);
             try (PreparedStatement pstmt = conn.prepareStatement(deleteQuery)) {
                 pstmt.setInt(1, reservationCode);
@@ -381,7 +381,7 @@ public class RoomReservations {
             System.out.print("Enter check-in date range end (YYYY-MM-DD, leave empty for any): ");
             String endDate = scanner.nextLine();
 
-            String query = "SELECT CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids FROM lab7_reservations WHERE " +
+            String query = "SELECT CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids FROM sgoel05.lab7_reservations WHERE " +
                     "FirstName LIKE ? AND " +
                     "LastName LIKE ? " +
                     (roomCode.isEmpty() ? "" : "AND Room LIKE ? ") +
@@ -440,7 +440,7 @@ public class RoomReservations {
 
             String query = "SELECT room, MONTH(checkout) AS month, " +
                     "SUM(ROUND(rate * DATEDIFF(checkout, checkin), 2)) AS revenue " +
-                    "FROM lab7_reservations " +
+                    "FROM sgoel05.lab7_reservations " +
                     "GROUP BY room, MONTH(checkout) " +
                     "ORDER BY room, MONTH(checkout)";
 
@@ -492,10 +492,10 @@ public class RoomReservations {
             System.err.println("SQL Exception: " + e.getMessage());
         }
     }
-    
+
     private void initializeDatabase() throws SQLException {
         String createRoomsTableSql =
-                "CREATE TABLE IF NOT EXISTS lab7_rooms (" +
+                "CREATE TABLE IF NOT EXISTS sgoel05.lab7_rooms (" +
                         "RoomCode char(5) PRIMARY KEY," +
                         "RoomName varchar(30) NOT NULL," +
                         "Beds int NOT NULL," +
@@ -507,7 +507,7 @@ public class RoomReservations {
                         ");";
 
         String createReservationsTableSql =
-                "CREATE TABLE IF NOT EXISTS lab7_reservations (" +
+                "CREATE TABLE IF NOT EXISTS sgoel05.lab7_reservations (" +
                         "CODE int PRIMARY KEY," +
                         "Room char(5) NOT NULL," +
                         "CheckIn date NOT NULL," +
@@ -517,17 +517,17 @@ public class RoomReservations {
                         "FirstName varchar(15) NOT NULL," +
                         "Adults int NOT NULL," +
                         "Kids int NOT NULL," +
-                        "FOREIGN KEY (Room) REFERENCES lab7_rooms (RoomCode)" +
+                        "FOREIGN KEY (Room) REFERENCES sgoel05.lab7_rooms (RoomCode)" +
                         ");";
 
         String[] checkDataSql = {
-                "SELECT EXISTS (SELECT 1 FROM lab7_rooms)",
-                "SELECT EXISTS (SELECT 1 FROM lab7_reservations)"
+                "SELECT EXISTS (SELECT 1 FROM sgoel05.lab7_rooms)",
+                "SELECT EXISTS (SELECT 1 FROM sgoel05.lab7_reservations)"
         };
 
         String[] initialDataSql = {
-                "INSERT INTO lab7_rooms SELECT * FROM INN.rooms;",
-                "INSERT INTO lab7_reservations SELECT CODE, Room, DATE_ADD(CheckIn, INTERVAL 162 MONTH), DATE_ADD(Checkout, INTERVAL 162 MONTH), Rate, LastName, FirstName, Adults, Kids FROM INN.reservations;"
+                "INSERT INTO sgoel05.lab7_rooms SELECT * FROM INN.rooms;",
+                "INSERT INTO sgoel05.lab7_reservations SELECT CODE, Room, DATE_ADD(CheckIn, INTERVAL 162 MONTH), DATE_ADD(Checkout, INTERVAL 162 MONTH), Rate, LastName, FirstName, Adults, Kids FROM INN.reservations;"
         };
 
         try (Connection conn = DriverManager.getConnection(System.getenv("HP_JDBC_URL"),
