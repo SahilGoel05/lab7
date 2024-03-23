@@ -2,12 +2,13 @@ Contribution Breakdown For Lab 7
 
 Our Approach:
 
-We all just met up and worked on the lab together. During these meetings, we split up the work by
-the requirements. So, one person would work on FR1, while another person would work on FR2, etc. 
-One of us also took on the task of figuring out the setup and the connection to the database.
-While working together, we made sure to follow the non-functional requirements such as protecting
-against malicious input. Once we kind of had the basic code for each of the requirement, we all 
-tackled debugging together as it was a longer process.
+We all decided to meet up outside of class and worked on the lab together. During these meetings, 
+we split up the work by the requirements. So, one person would work on FR1, while another person 
+would work on FR2, etc. One of us also took on the task of figuring out the setup and the connection 
+to the database, which was mostly smooth for Mac Users whereas Windows (1 person) took some more time 
+to set up. While working together, we made sure to follow the non-functional requirements such as protecting
+against malicious input and helped each out parallel programming style. Once we had laid a foundation 
+for each of the requirements, we all tackled debugging together as it was a much longer process.
 
 Breakdown:
 
